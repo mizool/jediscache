@@ -1,0 +1,4 @@
+== JedisCache
+An implementation of JCache, which uses Jedis to implement the Cache commands.
+
+For release/deployment instructions, refer to https://github.com/mizool/mizool/[Mizool].

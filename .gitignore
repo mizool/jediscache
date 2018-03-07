@@ -1,8 +1,9 @@
-.classpath
-.project
-.settings
+*.iml
+*.ipr
+*.iws
 .idea
 target
-test-output
-*.iml
-overlays
+/.settings
+/.project
+/.classpath
+/.checkstyle
