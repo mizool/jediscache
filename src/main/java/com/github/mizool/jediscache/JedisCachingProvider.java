@@ -27,9 +27,12 @@ import javax.cache.CacheManager;
 import javax.cache.configuration.OptionalFeature;
 import javax.cache.spi.CachingProvider;
 
+import lombok.extern.slf4j.Slf4j;
+
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
 
+@Slf4j
 public class JedisCachingProvider implements CachingProvider
 {
     private final JedisPool jedisPool;
@@ -37,7 +40,11 @@ public class JedisCachingProvider implements CachingProvider
 
     public JedisCachingProvider()
     {
-        this.jedisPool = new JedisPool(new JedisPoolConfig(), "localhost"); // TODO
+        String host = System.getProperty("jediscache.host", "127.0.0.1");
+        log.info("JedisCache active, connecting to {}", host);
+        JedisPoolConfig jedisPoolConfig = new JedisPoolConfig();
+        jedisPoolConfig.setMaxTotal(-1);
+        this.jedisPool = new JedisPool(jedisPoolConfig, host);
         this.cacheManagersByClassLoader = new WeakHashMap<>();
     }
 

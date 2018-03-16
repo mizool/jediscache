@@ -58,6 +58,10 @@ class JedisCacheJavaSerializationConverter<K, V> implements JedisCacheKeyConvert
 
     private byte[] serialize(Object object)
     {
+        if (object == null)
+        {
+            return null;
+        }
         try (ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
             ObjectOutputStream objectOutputStream = new ObjectOutputStream(byteArrayOutputStream))
         {
@@ -72,6 +76,10 @@ class JedisCacheJavaSerializationConverter<K, V> implements JedisCacheKeyConvert
 
     private <T> T deserialize(byte[] bytes, Class<T> classOfT)
     {
+        if (bytes == null)
+        {
+            return null;
+        }
         try (ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(bytes);
             ObjectInputStream objectInputStream = new ObjectInputStream(byteArrayInputStream))
         {
