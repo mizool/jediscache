@@ -42,9 +42,7 @@ public class JedisCachingProvider implements CachingProvider
     {
         String host = System.getProperty("jediscache.host", "127.0.0.1");
         log.info("JedisCache active, connecting to {}", host);
-        JedisPoolConfig jedisPoolConfig = new JedisPoolConfig();
-        jedisPoolConfig.setMaxTotal(-1);
-        this.jedisPool = new JedisPool(jedisPoolConfig, host);
+        this.jedisPool = new JedisPool(new JedisPoolConfig(), host);
         this.cacheManagersByClassLoader = new WeakHashMap<>();
     }
 

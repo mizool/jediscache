@@ -52,7 +52,7 @@ class JedisCache<K, V> implements Cache<K, V>
     private final JedisCacheManager cacheManager;
     private final ClassLoader classLoader;
     private final MutableConfiguration<K, V> configuration;
-    private final Jedis jedis;
+    private final JedisPool jedisPool;
     private final String name;
     private final JedisCacheKeyConverter<K> keyConverter;
     private final JedisCacheValueConverter<V> valueConverter;
@@ -71,6 +71,7 @@ class JedisCache<K, V> implements Cache<K, V>
         this.cacheManager = cacheManager;
         this.classLoader = classLoader;
         this.name = name;
+        this.jedisPool = jedisPool;
 
         //we make a copy of the configuration here so that the provided one
         //may be changed and or used independently for other caches.  we do this
@@ -98,8 +99,6 @@ class JedisCache<K, V> implements Cache<K, V>
 
         expiryPolicy = this.configuration.getExpiryPolicyFactory().create();
 
-        jedis = jedisPool.getResource();
-
         closed = new AtomicBoolean(false);
     }
 
@@ -107,14 +106,21 @@ class JedisCache<K, V> implements Cache<K, V>
     public V get(K key)
     {
         ensureOpen();
-        return valueConverter.toValue(jedis.hget(jedisCacheName, keyConverter.fromKey(key)));
+        try (Jedis jedis = jedisPool.getResource())
+        {
+            return valueConverter.toValue(jedis.hget(jedisCacheName, keyConverter.fromKey(key)));
+        }
     }
 
     @Override
     public Map<K, V> getAll(Set<? extends K> keys)
     {
         ensureOpen();
-        Map<byte[], byte[]> allEntries = jedis.hgetAll(jedisCacheName);
+        Map<byte[], byte[]> allEntries;
+        try (Jedis jedis = jedisPool.getResource())
+        {
+            allEntries = jedis.hgetAll(jedisCacheName);
+        }
         ImmutableMap.Builder<K, V> builder = ImmutableMap.builder();
         keys.forEach(key -> {
             byte[] serializedKey = keyConverter.fromKey(key);
@@ -130,7 +136,10 @@ class JedisCache<K, V> implements Cache<K, V>
     public boolean containsKey(K key)
     {
         ensureOpen();
-        return jedis.hget(jedisCacheName, keyConverter.fromKey(key)) != null;
+        try (Jedis jedis = jedisPool.getResource())
+        {
+            return jedis.hget(jedisCacheName, keyConverter.fromKey(key)) != null;
+        }
     }
 
     @Override
@@ -144,7 +153,10 @@ class JedisCache<K, V> implements Cache<K, V>
     public void put(K key, V value)
     {
         ensureOpen();
-        jedis.hset(jedisCacheName, keyConverter.fromKey(key), valueConverter.fromValue(value));
+        try (Jedis jedis = jedisPool.getResource())
+        {
+            jedis.hset(jedisCacheName, keyConverter.fromKey(key), valueConverter.fromValue(value));
+        }
     }
 
     @Override
@@ -179,7 +191,10 @@ class JedisCache<K, V> implements Cache<K, V>
     public boolean remove(K key)
     {
         ensureOpen();
-        return jedis.hdel(jedisCacheName, keyConverter.fromKey(key)) > 0;
+        try (Jedis jedis = jedisPool.getResource())
+        {
+            return jedis.hdel(jedisCacheName, keyConverter.fromKey(key)) > 0;
+        }
     }
 
     @Override
@@ -236,14 +251,20 @@ class JedisCache<K, V> implements Cache<K, V>
     public void removeAll()
     {
         ensureOpen();
-        jedis.hgetAll(jedisCacheName).keySet().forEach(bytes -> remove(keyConverter.toKey(bytes)));
+        try (Jedis jedis = jedisPool.getResource())
+        {
+            jedis.hgetAll(jedisCacheName).keySet().forEach(bytes -> remove(keyConverter.toKey(bytes)));
+        }
     }
 
     @Override
     public void clear()
     {
         ensureOpen();
-        jedis.del(jedisCacheName);
+        try (Jedis jedis = jedisPool.getResource())
+        {
+            jedis.del(jedisCacheName);
+        }
     }
 
     @Override
@@ -308,7 +329,11 @@ class JedisCache<K, V> implements Cache<K, V>
     public Iterator<Entry<K, V>> iterator()
     {
         ensureOpen();
-        Map<byte[], byte[]> allEntries = jedis.hgetAll(jedisCacheName);
+        Map<byte[], byte[]> allEntries;
+        try (Jedis jedis = jedisPool.getResource())
+        {
+            allEntries = jedis.hgetAll(jedisCacheName);
+        }
         ImmutableMap.Builder<K, V> builder = ImmutableMap.builder();
         allEntries.forEach((key, value) -> builder.put(keyConverter.toKey(key), valueConverter.toValue(value)));
         ImmutableMap<K, V> entriesMap = builder.build();
