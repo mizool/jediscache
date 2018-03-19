@@ -29,10 +29,13 @@ import javax.cache.spi.CachingProvider;
 
 import lombok.extern.slf4j.Slf4j;
 
+import org.kohsuke.MetaInfServices;
+
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
 
 @Slf4j
+@MetaInfServices(CachingProvider.class)
 public class JedisCachingProvider implements CachingProvider
 {
     private final JedisPool jedisPool;
