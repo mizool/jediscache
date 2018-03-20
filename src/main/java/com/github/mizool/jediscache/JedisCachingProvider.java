@@ -1,24 +1,9 @@
-/**
- * Copyright 2017-2018 incub8 Software Labs GmbH
- * Copyright 2017-2018 protel Hotelsoftware GmbH
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package com.github.mizool.jediscache;
 
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import java.util.WeakHashMap;
 
@@ -38,15 +23,16 @@ import redis.clients.jedis.JedisPoolConfig;
 @MetaInfServices(CachingProvider.class)
 public class JedisCachingProvider implements CachingProvider
 {
+    private static final String JEDISCACHE_HOST = "jediscache.host";
     private final JedisPool jedisPool;
-    private WeakHashMap<ClassLoader, HashMap<URI, CacheManager>> cacheManagersByClassLoader;
+    private Map<ClassLoader, Map<URI, CacheManager>> cacheManagersByClassLoader;
 
     public JedisCachingProvider()
     {
-        String host = System.getProperty("jediscache.host", "127.0.0.1");
+        String host = System.getProperty(JEDISCACHE_HOST, "127.0.0.1");
         log.info("JedisCache active, connecting to {}", host);
-        this.jedisPool = new JedisPool(new JedisPoolConfig(), host);
-        this.cacheManagersByClassLoader = new WeakHashMap<>();
+        jedisPool = new JedisPool(new JedisPoolConfig(), host);
+        cacheManagersByClassLoader = new WeakHashMap<>();
     }
 
     @Override
@@ -65,11 +51,12 @@ public class JedisCachingProvider implements CachingProvider
             properties = new Properties();
         }
 
-        HashMap<URI, CacheManager> cacheManagersByURI = cacheManagersByClassLoader.get(classLoader);
+        Map<URI, CacheManager> cacheManagersByURI = cacheManagersByClassLoader.get(classLoader);
 
         if (cacheManagersByURI == null)
         {
             cacheManagersByURI = new HashMap<>();
+            cacheManagersByClassLoader.put(classLoader, cacheManagersByURI);
         }
 
         CacheManager cacheManager = cacheManagersByURI.get(uri);
@@ -78,11 +65,6 @@ public class JedisCachingProvider implements CachingProvider
         {
             cacheManager = new JedisCacheManager(this, uri, classLoader, properties, jedisPool);
             cacheManagersByURI.put(uri, cacheManager);
-        }
-
-        if (!cacheManagersByClassLoader.containsKey(classLoader))
-        {
-            cacheManagersByClassLoader.put(classLoader, cacheManagersByURI);
         }
 
         return cacheManager;
@@ -128,17 +110,17 @@ public class JedisCachingProvider implements CachingProvider
     @Override
     public synchronized void close()
     {
-        WeakHashMap<ClassLoader, HashMap<URI, CacheManager>> managersByClassLoader = this.cacheManagersByClassLoader;
+        Map<ClassLoader, Map<URI, CacheManager>> cacheManagersByClassLoader = this.cacheManagersByClassLoader;
         this.cacheManagersByClassLoader = new WeakHashMap<>();
 
-        for (ClassLoader classLoader : managersByClassLoader.keySet())
+        for (ClassLoader classLoader : cacheManagersByClassLoader.keySet())
         {
-            for (CacheManager cacheManager : managersByClassLoader.get(classLoader).values())
+            for (CacheManager cacheManager : cacheManagersByClassLoader.get(classLoader).values())
             {
                 cacheManager.close();
             }
         }
-        this.jedisPool.close();
+        jedisPool.close();
     }
 
     @Override
@@ -146,7 +128,7 @@ public class JedisCachingProvider implements CachingProvider
     {
         ClassLoader managerClassLoader = classLoader == null ? getDefaultClassLoader() : classLoader;
 
-        HashMap<URI, CacheManager> cacheManagersByURI = cacheManagersByClassLoader.remove(managerClassLoader);
+        Map<URI, CacheManager> cacheManagersByURI = cacheManagersByClassLoader.remove(managerClassLoader);
 
         if (cacheManagersByURI != null)
         {
@@ -163,7 +145,7 @@ public class JedisCachingProvider implements CachingProvider
         URI managerURI = uri == null ? getDefaultURI() : uri;
         ClassLoader managerClassLoader = classLoader == null ? getDefaultClassLoader() : classLoader;
 
-        HashMap<URI, CacheManager> cacheManagersByURI = cacheManagersByClassLoader.get(managerClassLoader);
+        Map<URI, CacheManager> cacheManagersByURI = cacheManagersByClassLoader.get(managerClassLoader);
         if (cacheManagersByURI != null)
         {
             CacheManager cacheManager = cacheManagersByURI.remove(managerURI);
@@ -185,7 +167,7 @@ public class JedisCachingProvider implements CachingProvider
         URI managerURI = uri == null ? getDefaultURI() : uri;
         ClassLoader managerClassLoader = classLoader == null ? getDefaultClassLoader() : classLoader;
 
-        HashMap<URI, CacheManager> cacheManagersByURI = cacheManagersByClassLoader.get(managerClassLoader);
+        Map<URI, CacheManager> cacheManagersByURI = cacheManagersByClassLoader.get(managerClassLoader);
         if (cacheManagersByURI != null)
         {
             cacheManagersByURI.remove(managerURI);

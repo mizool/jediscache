@@ -6,6 +6,30 @@
     <groupId>com.github.mizool.jediscache</groupId>
     <artifactId>jediscache</artifactId>
     <version>0.1-SNAPSHOT</version>
+    <name>${project.groupId}:${project.artifactId}</name>
+    <description>An implementation of JCache, which uses Jedis to implement the Cache commands.</description>
+    <url>https://github.com/mizool/jediscache</url>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <scm>
+        <connection>scm:git:git://github.com/mizool/jediscache/jediscache.git</connection>
+        <developerConnection>scm:git:ssh://github.com/mizool/jediscache/jediscache.git</developerConnection>
+        <url>https://github.com/mizool/jediscache</url>
+    </scm>
+
+    <distributionManagement>
+        <snapshotRepository>
+            <id>ossrh</id>
+            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+        </snapshotRepository>
+    </distributionManagement>
 
     <properties>
         <encoding>UTF-8</encoding>

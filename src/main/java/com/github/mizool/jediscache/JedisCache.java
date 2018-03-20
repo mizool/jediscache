@@ -1,19 +1,3 @@
-/**
- * Copyright 2017-2018 incub8 Software Labs GmbH
- * Copyright 2017-2018 protel Hotelsoftware GmbH
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package com.github.mizool.jediscache;
 
 import java.util.Iterator;
@@ -26,60 +10,52 @@ import javax.cache.configuration.CacheEntryListenerConfiguration;
 import javax.cache.configuration.CompleteConfiguration;
 import javax.cache.configuration.Configuration;
 import javax.cache.configuration.MutableConfiguration;
-import javax.cache.expiry.ExpiryPolicy;
 import javax.cache.integration.CompletionListener;
 import javax.cache.processor.EntryProcessor;
 import javax.cache.processor.EntryProcessorException;
 import javax.cache.processor.EntryProcessorResult;
 
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
+import lombok.Data;
 import lombok.NonNull;
-import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 
 import com.google.common.base.Charsets;
 import com.google.common.collect.ImmutableMap;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.ScanParams;
+import redis.clients.jedis.ScanResult;
 
 @Slf4j
-@Getter
-@EqualsAndHashCode
-@ToString
+@Data
 class JedisCache<K, V> implements Cache<K, V>
 {
     private final JedisCacheManager cacheManager;
-    private final ClassLoader classLoader;
     private final MutableConfiguration<K, V> configuration;
     private final JedisPool jedisPool;
     private final String name;
     private final JedisCacheKeyConverter<K> keyConverter;
     private final JedisCacheValueConverter<V> valueConverter;
     private final byte[] jedisCacheName;
-    private final ExpiryPolicy expiryPolicy;
-
-    private AtomicBoolean closed;
+    private final AtomicBoolean closed;
 
     public JedisCache(
         @NonNull JedisCacheManager cacheManager,
         @NonNull String name,
-        @NonNull ClassLoader classLoader,
         @NonNull Configuration<K, V> configuration,
         @NonNull JedisPool jedisPool)
     {
         this.cacheManager = cacheManager;
-        this.classLoader = classLoader;
         this.name = name;
         this.jedisPool = jedisPool;
 
         //we make a copy of the configuration here so that the provided one
-        //may be changed and or used independently for other caches.  we do this
+        //may be changed and/or used independently for other caches. we do this
         //as we don't know if the provided configuration is mutable
         if (configuration instanceof CompleteConfiguration)
         {
             //support use of CompleteConfiguration
-            this.configuration = new MutableConfiguration<>((MutableConfiguration<K, V>) configuration);
+            this.configuration = new MutableConfiguration<>((CompleteConfiguration<K, V>) configuration);
         }
         else
         {
@@ -87,7 +63,7 @@ class JedisCache<K, V> implements Cache<K, V>
             MutableConfiguration<K, V> mutableConfiguration = new MutableConfiguration<>();
             mutableConfiguration.setStoreByValue(configuration.isStoreByValue());
             mutableConfiguration.setTypes(configuration.getKeyType(), configuration.getValueType());
-            this.configuration = new MutableConfiguration<>(mutableConfiguration);
+            this.configuration = mutableConfiguration;
         }
 
         JedisCacheJavaSerializationConverter<K, V>
@@ -97,15 +73,13 @@ class JedisCache<K, V> implements Cache<K, V>
         valueConverter = converter;
         jedisCacheName = name.getBytes(Charsets.UTF_8);
 
-        expiryPolicy = this.configuration.getExpiryPolicyFactory().create();
-
         closed = new AtomicBoolean(false);
     }
 
     @Override
     public V get(K key)
     {
-        ensureOpen();
+        verifyOpen();
         try (Jedis jedis = jedisPool.getResource())
         {
             return valueConverter.toValue(jedis.hget(jedisCacheName, keyConverter.fromKey(key)));
@@ -115,7 +89,7 @@ class JedisCache<K, V> implements Cache<K, V>
     @Override
     public Map<K, V> getAll(Set<? extends K> keys)
     {
-        ensureOpen();
+        verifyOpen();
         Map<byte[], byte[]> allEntries;
         try (Jedis jedis = jedisPool.getResource())
         {
@@ -135,10 +109,10 @@ class JedisCache<K, V> implements Cache<K, V>
     @Override
     public boolean containsKey(K key)
     {
-        ensureOpen();
+        verifyOpen();
         try (Jedis jedis = jedisPool.getResource())
         {
-            return jedis.hget(jedisCacheName, keyConverter.fromKey(key)) != null;
+            return jedis.hexists(jedisCacheName, keyConverter.fromKey(key));
         }
     }
 
@@ -152,7 +126,7 @@ class JedisCache<K, V> implements Cache<K, V>
     @Override
     public void put(K key, V value)
     {
-        ensureOpen();
+        verifyOpen();
         try (Jedis jedis = jedisPool.getResource())
         {
             jedis.hset(jedisCacheName, keyConverter.fromKey(key), valueConverter.fromValue(value));
@@ -162,7 +136,7 @@ class JedisCache<K, V> implements Cache<K, V>
     @Override
     public V getAndPut(K key, V value)
     {
-        ensureOpen();
+        verifyOpen();
         V result = get(key);
         put(key, value);
         return result;
@@ -177,23 +151,20 @@ class JedisCache<K, V> implements Cache<K, V>
     @Override
     public boolean putIfAbsent(K key, V value)
     {
-        ensureOpen();
-        boolean result = false;
-        if (!containsKey(key))
+        verifyOpen();
+        try (Jedis jedis = jedisPool.getResource())
         {
-            result = true;
-            put(key, value);
+            return jedis.hsetnx(jedisCacheName, keyConverter.fromKey(key), valueConverter.fromValue(value)) == 1;
         }
-        return result;
     }
 
     @Override
     public boolean remove(K key)
     {
-        ensureOpen();
+        verifyOpen();
         try (Jedis jedis = jedisPool.getResource())
         {
-            return jedis.hdel(jedisCacheName, keyConverter.fromKey(key)) > 0;
+            return jedis.hdel(jedisCacheName, keyConverter.fromKey(key)) == 1;
         }
     }
 
@@ -214,7 +185,7 @@ class JedisCache<K, V> implements Cache<K, V>
     @Override
     public boolean replace(K key, V oldValue, V newValue)
     {
-        boolean result = remove(key, oldValue);
+        boolean result = containsKey(key);
         if (result)
         {
             put(key, newValue);
@@ -250,17 +221,19 @@ class JedisCache<K, V> implements Cache<K, V>
     @Override
     public void removeAll()
     {
-        ensureOpen();
+        verifyOpen();
+        Set<byte[]> keys;
         try (Jedis jedis = jedisPool.getResource())
         {
-            jedis.hgetAll(jedisCacheName).keySet().forEach(bytes -> remove(keyConverter.toKey(bytes)));
+            keys = jedis.hkeys(jedisCacheName);
         }
+        keys.stream().map(keyConverter::toKey).forEach(this::remove);
     }
 
     @Override
     public void clear()
     {
-        ensureOpen();
+        verifyOpen();
         try (Jedis jedis = jedisPool.getResource())
         {
             jedis.del(jedisCacheName);
@@ -328,27 +301,31 @@ class JedisCache<K, V> implements Cache<K, V>
     @Override
     public Iterator<Entry<K, V>> iterator()
     {
-        ensureOpen();
-        Map<byte[], byte[]> allEntries;
+        verifyOpen();
+        ScanParams scanParams = new ScanParams();
+        byte[] cursor = ScanParams.SCAN_POINTER_START_BINARY;
+        ScanResult<Map.Entry<byte[], byte[]>> scanResult;
         try (Jedis jedis = jedisPool.getResource())
         {
-            allEntries = jedis.hgetAll(jedisCacheName);
+            scanResult = jedis.hscan(jedisCacheName, cursor, scanParams);
         }
-        ImmutableMap.Builder<K, V> builder = ImmutableMap.builder();
-        allEntries.forEach((key, value) -> builder.put(keyConverter.toKey(key), valueConverter.toValue(value)));
-        ImmutableMap<K, V> entriesMap = builder.build();
-        return entriesMap.entrySet().stream().map(entry -> (Entry<K, V>) new Entry<K, V>()
+        return scanResult.getResult().stream().map(this::turnIntoEntries).iterator();
+    }
+
+    private Entry<K, V> turnIntoEntries(Map.Entry<byte[], byte[]> entry)
+    {
+        return new Entry<K, V>()
         {
             @Override
             public K getKey()
             {
-                return entry.getKey();
+                return keyConverter.toKey(entry.getKey());
             }
 
             @Override
             public V getValue()
             {
-                return entry.getValue();
+                return valueConverter.toValue(entry.getValue());
             }
 
             @Override
@@ -363,10 +340,10 @@ class JedisCache<K, V> implements Cache<K, V>
                     classOfT +
                     " is not a supported by this implementation");
             }
-        }).iterator();
+        };
     }
 
-    private void ensureOpen()
+    private void verifyOpen()
     {
         if (isClosed())
         {
