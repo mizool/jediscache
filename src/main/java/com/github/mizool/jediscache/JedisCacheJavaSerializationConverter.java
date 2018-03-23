@@ -11,36 +11,9 @@ import javax.cache.CacheException;
 import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor
-class JedisCacheJavaSerializationConverter<K, V> implements JedisCacheKeyConverter<K>, JedisCacheValueConverter<V>
+class JedisCacheJavaSerializationConverter<K, V>
 {
-    private final Class<K> keyClass;
-    private final Class<V> valueClass;
-
-    @Override
-    public byte[] fromKey(K key)
-    {
-        return serialize(key);
-    }
-
-    @Override
-    public byte[] fromValue(V value)
-    {
-        return serialize(value);
-    }
-
-    @Override
-    public V toValue(byte[] bytes)
-    {
-        return deserialize(bytes, valueClass);
-    }
-
-    @Override
-    public K toKey(byte[] bytes)
-    {
-        return deserialize(bytes, keyClass);
-    }
-
-    private byte[] serialize(Object object)
+    public <T> byte[] serialize(T object)
     {
         if (object == null)
         {
@@ -58,7 +31,7 @@ class JedisCacheJavaSerializationConverter<K, V> implements JedisCacheKeyConvert
         }
     }
 
-    private <T> T deserialize(byte[] bytes, Class<T> classOfT)
+    public <T> T deserialize(byte[] bytes, Class<T> classOfT)
     {
         if (bytes == null)
         {

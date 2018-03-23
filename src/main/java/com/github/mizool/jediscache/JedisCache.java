@@ -4,6 +4,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 import javax.cache.Cache;
 import javax.cache.configuration.CacheEntryListenerConfiguration;
@@ -34,8 +35,9 @@ class JedisCache<K, V> implements Cache<K, V>
     private final MutableConfiguration<K, V> configuration;
     private final JedisPool jedisPool;
     private final String name;
-    private final JedisCacheKeyConverter<K> keyConverter;
-    private final JedisCacheValueConverter<V> valueConverter;
+    private final JedisCacheJavaSerializationConverter<K, V> converter;
+    private final Class<K> keyClass;
+    private final Class<V> valueClass;
     private final byte[] jedisCacheName;
     private final AtomicBoolean closed;
 
@@ -48,6 +50,9 @@ class JedisCache<K, V> implements Cache<K, V>
         this.cacheManager = cacheManager;
         this.name = name;
         this.jedisPool = jedisPool;
+
+        this.keyClass = configuration.getKeyType();
+        this.valueClass = configuration.getValueType();
 
         //we make a copy of the configuration here so that the provided one
         //may be changed and/or used independently for other caches. we do this
@@ -62,15 +67,11 @@ class JedisCache<K, V> implements Cache<K, V>
             //support use of Basic Configuration
             MutableConfiguration<K, V> mutableConfiguration = new MutableConfiguration<>();
             mutableConfiguration.setStoreByValue(configuration.isStoreByValue());
-            mutableConfiguration.setTypes(configuration.getKeyType(), configuration.getValueType());
+            mutableConfiguration.setTypes(keyClass, valueClass);
             this.configuration = mutableConfiguration;
         }
 
-        JedisCacheJavaSerializationConverter<K, V>
-            converter
-            = new JedisCacheJavaSerializationConverter<>(configuration.getKeyType(), configuration.getValueType());
-        keyConverter = converter;
-        valueConverter = converter;
+        converter = new JedisCacheJavaSerializationConverter<>();
         jedisCacheName = name.getBytes(Charsets.UTF_8);
 
         closed = new AtomicBoolean(false);
@@ -79,28 +80,28 @@ class JedisCache<K, V> implements Cache<K, V>
     @Override
     public V get(K key)
     {
-        verifyOpen();
-        try (Jedis jedis = jedisPool.getResource())
+        try (Jedis jedis = obtainJedis())
         {
-            return valueConverter.toValue(jedis.hget(jedisCacheName, keyConverter.fromKey(key)));
+            byte[] serializedKey = converter.serialize(key);
+            byte[] serializedValue = jedis.hget(jedisCacheName, serializedKey);
+            return converter.deserialize(serializedValue, valueClass);
         }
     }
 
     @Override
     public Map<K, V> getAll(Set<? extends K> keys)
     {
-        verifyOpen();
         Map<byte[], byte[]> allEntries;
-        try (Jedis jedis = jedisPool.getResource())
+        try (Jedis jedis = obtainJedis())
         {
             allEntries = jedis.hgetAll(jedisCacheName);
         }
         ImmutableMap.Builder<K, V> builder = ImmutableMap.builder();
         keys.forEach(key -> {
-            byte[] serializedKey = keyConverter.fromKey(key);
+            byte[] serializedKey = converter.serialize(key);
             if (allEntries.containsKey(serializedKey))
             {
-                builder.put(key, valueConverter.toValue(allEntries.get(serializedKey)));
+                builder.put(key, converter.deserialize(allEntries.get(serializedKey), valueClass));
             }
         });
         return builder.build();
@@ -109,10 +110,9 @@ class JedisCache<K, V> implements Cache<K, V>
     @Override
     public boolean containsKey(K key)
     {
-        verifyOpen();
-        try (Jedis jedis = jedisPool.getResource())
+        try (Jedis jedis = obtainJedis())
         {
-            return jedis.hexists(jedisCacheName, keyConverter.fromKey(key));
+            return jedis.hexists(jedisCacheName, converter.serialize(key));
         }
     }
 
@@ -126,17 +126,17 @@ class JedisCache<K, V> implements Cache<K, V>
     @Override
     public void put(K key, V value)
     {
-        verifyOpen();
-        try (Jedis jedis = jedisPool.getResource())
+        try (Jedis jedis = obtainJedis())
         {
-            jedis.hset(jedisCacheName, keyConverter.fromKey(key), valueConverter.fromValue(value));
+            byte[] serializedKey = converter.serialize(key);
+            byte[] serializedValue = converter.serialize(value);
+            jedis.hset(jedisCacheName, serializedKey, serializedValue);
         }
     }
 
     @Override
     public V getAndPut(K key, V value)
     {
-        verifyOpen();
         V result = get(key);
         put(key, value);
         return result;
@@ -151,20 +151,21 @@ class JedisCache<K, V> implements Cache<K, V>
     @Override
     public boolean putIfAbsent(K key, V value)
     {
-        verifyOpen();
-        try (Jedis jedis = jedisPool.getResource())
+        try (Jedis jedis = obtainJedis())
         {
-            return jedis.hsetnx(jedisCacheName, keyConverter.fromKey(key), valueConverter.fromValue(value)) == 1;
+            byte[] serializedKey = converter.serialize(key);
+            byte[] serializedValue = converter.serialize(value);
+            return jedis.hsetnx(jedisCacheName, serializedKey, serializedValue) == 1;
         }
     }
 
     @Override
     public boolean remove(K key)
     {
-        verifyOpen();
-        try (Jedis jedis = jedisPool.getResource())
+        try (Jedis jedis = obtainJedis())
         {
-            return jedis.hdel(jedisCacheName, keyConverter.fromKey(key)) == 1;
+            byte[] serializedKey = converter.serialize(key);
+            return jedis.hdel(jedisCacheName, serializedKey) == 1;
         }
     }
 
@@ -185,7 +186,7 @@ class JedisCache<K, V> implements Cache<K, V>
     @Override
     public boolean replace(K key, V oldValue, V newValue)
     {
-        boolean result = containsKey(key);
+        boolean result = get(key).equals(oldValue);
         if (result)
         {
             put(key, newValue);
@@ -196,7 +197,7 @@ class JedisCache<K, V> implements Cache<K, V>
     @Override
     public boolean replace(K key, V value)
     {
-        boolean result = remove(key);
+        boolean result = containsKey(key);
         if (result)
         {
             put(key, value);
@@ -221,20 +222,19 @@ class JedisCache<K, V> implements Cache<K, V>
     @Override
     public void removeAll()
     {
-        verifyOpen();
-        Set<byte[]> keys;
-        try (Jedis jedis = jedisPool.getResource())
+        Set<K> keys;
+        try (Jedis jedis = obtainJedis())
         {
-            keys = jedis.hkeys(jedisCacheName);
+            keys = jedis.hkeys(jedisCacheName).stream().map(bytes -> converter.deserialize(bytes, keyClass)).collect(
+                Collectors.toSet());
         }
-        keys.stream().map(keyConverter::toKey).forEach(this::remove);
+        removeAll(keys);
     }
 
     @Override
     public void clear()
     {
-        verifyOpen();
-        try (Jedis jedis = jedisPool.getResource())
+        try (Jedis jedis = obtainJedis())
         {
             jedis.del(jedisCacheName);
         }
@@ -301,31 +301,30 @@ class JedisCache<K, V> implements Cache<K, V>
     @Override
     public Iterator<Entry<K, V>> iterator()
     {
-        verifyOpen();
         ScanParams scanParams = new ScanParams();
         byte[] cursor = ScanParams.SCAN_POINTER_START_BINARY;
         ScanResult<Map.Entry<byte[], byte[]>> scanResult;
-        try (Jedis jedis = jedisPool.getResource())
+        try (Jedis jedis = obtainJedis())
         {
             scanResult = jedis.hscan(jedisCacheName, cursor, scanParams);
         }
-        return scanResult.getResult().stream().map(this::turnIntoEntries).iterator();
+        return scanResult.getResult().stream().map(this::deserialize).iterator();
     }
 
-    private Entry<K, V> turnIntoEntries(Map.Entry<byte[], byte[]> entry)
+    private Entry<K, V> deserialize(Map.Entry<byte[], byte[]> entry)
     {
         return new Entry<K, V>()
         {
             @Override
             public K getKey()
             {
-                return keyConverter.toKey(entry.getKey());
+                return converter.deserialize(entry.getKey(), keyClass);
             }
 
             @Override
             public V getValue()
             {
-                return valueConverter.toValue(entry.getValue());
+                return converter.deserialize(entry.getValue(), valueClass);
             }
 
             @Override
@@ -341,6 +340,12 @@ class JedisCache<K, V> implements Cache<K, V>
                     " is not a supported by this implementation");
             }
         };
+    }
+
+    private Jedis obtainJedis()
+    {
+        verifyOpen();
+        return jedisPool.getResource();
     }
 
     private void verifyOpen()

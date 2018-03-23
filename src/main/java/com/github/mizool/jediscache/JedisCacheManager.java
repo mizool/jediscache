@@ -60,21 +60,18 @@ class JedisCacheManager implements CacheManager
     public <K, V, C extends Configuration<K, V>> Cache<K, V> createCache(
         @NonNull String cacheName, @NonNull C configuration) throws IllegalArgumentException
     {
-        verifyOpen();
         synchronized (caches)
         {
+            verifyOpen();
             Cache<K, V> cache = getCacheInstance(cacheName);
-            if (cache == null)
-            {
-                cache = new JedisCache<>(this, cacheName, configuration, jedisPool);
-                caches.put(cache.getName(), cache);
-
-                return cache;
-            }
-            else
+            if (cache != null)
             {
                 throw new CacheException("A cache named " + cacheName + " already exists.");
             }
+            cache = new JedisCache<>(this, cacheName, configuration, jedisPool);
+            caches.put(cache.getName(), cache);
+
+            return cache;
         }
     }
 
@@ -88,30 +85,11 @@ class JedisCacheManager implements CacheManager
         {
             cache = getCacheInstance(cacheName);
         }
-        if (cache == null)
-        {
-            return null;
-        }
-        else
+        if (cache != null)
         {
             Configuration<K, V> configuration = cache.getConfiguration(CompleteConfiguration.class);
 
-            if (configuration.getKeyType() != null && configuration.getKeyType().equals(keyType))
-            {
-                if (configuration.getValueType() != null && configuration.getValueType().equals(valueType))
-                {
-                    return cache;
-                }
-                else
-                {
-                    throw new ClassCastException("Incompatible cache value types specified, expected " +
-                        configuration.getValueType() +
-                        " but " +
-                        valueType +
-                        " was specified");
-                }
-            }
-            else
+            if (configuration.getKeyType() == null || !configuration.getKeyType().equals(keyType))
             {
                 throw new ClassCastException("Incompatible cache key types specified, expected " +
                     configuration.getKeyType() +
@@ -119,15 +97,26 @@ class JedisCacheManager implements CacheManager
                     keyType +
                     " was specified");
             }
+
+            if (configuration.getValueType() == null || !configuration.getValueType().equals(valueType))
+            {
+                throw new ClassCastException("Incompatible cache value types specified, expected " +
+                    configuration.getValueType() +
+                    " but " +
+                    valueType +
+                    " was specified");
+            }
         }
+
+        return cache;
     }
 
     @Override
     public <K, V> Cache<K, V> getCache(String cacheName)
     {
-        verifyOpen();
         synchronized (caches)
         {
+            verifyOpen();
             return getCacheInstance(cacheName);
         }
     }
@@ -135,9 +124,9 @@ class JedisCacheManager implements CacheManager
     @Override
     public Iterable<String> getCacheNames()
     {
-        verifyOpen();
         synchronized (caches)
         {
+            verifyOpen();
             return ImmutableSet.copyOf(caches.keySet());
         }
     }
@@ -145,15 +134,14 @@ class JedisCacheManager implements CacheManager
     @Override
     public void destroyCache(@NonNull String cacheName)
     {
-        verifyOpen();
-        Cache<?, ?> cache;
         synchronized (caches)
         {
-            cache = caches.get(cacheName);
-        }
-        if (cache != null)
-        {
-            cache.close();
+            verifyOpen();
+            Cache<?, ?> cache = caches.get(cacheName);
+            if (cache != null)
+            {
+                cache.close();
+            }
         }
     }
 
