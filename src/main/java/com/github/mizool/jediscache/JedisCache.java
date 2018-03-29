@@ -18,6 +18,7 @@ import javax.cache.processor.EntryProcessorResult;
 
 import lombok.Data;
 import lombok.NonNull;
+import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 
 import com.google.common.base.Charsets;
@@ -29,6 +30,7 @@ import redis.clients.jedis.ScanResult;
 
 @Slf4j
 @Data
+@ToString(of = { "name" })
 class JedisCache<K, V> implements Cache<K, V>
 {
     private final JedisCacheManager cacheManager;
@@ -225,8 +227,10 @@ class JedisCache<K, V> implements Cache<K, V>
         Set<K> keys;
         try (Jedis jedis = obtainJedis())
         {
-            keys = jedis.hkeys(jedisCacheName).stream().map(bytes -> converter.deserialize(bytes, keyClass)).collect(
-                Collectors.toSet());
+            keys = jedis.hkeys(jedisCacheName)
+                .stream()
+                .map(bytes -> converter.deserialize(bytes, keyClass))
+                .collect(Collectors.toSet());
         }
         removeAll(keys);
     }

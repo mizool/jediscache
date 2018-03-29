@@ -192,7 +192,7 @@ class JedisCacheManager implements CacheManager
             return classOfT.cast(this);
         }
 
-        throw new IllegalArgumentException("Unwapping to " + classOfT + " is not a supported by this implementation");
+        throw new IllegalArgumentException("Unwrapping to " + classOfT + " is not a supported by this implementation");
     }
 
     void releaseCache(@NonNull String cacheName)
