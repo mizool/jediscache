@@ -1,0 +1,25 @@
+== JedisCache
+An implementation of JCache which uses Jedis to implement the Cache commands.
+
+For release/deployment instructions, refer to https://github.com/mizool/mizool/[Mizool].
+
+== Limitations
+* Listener support is not implemented.
+* The following JCache operations were implemented using multiple subsequent commands to Redis, which creates race conditions:
+** getAndPut
+** putAll
+** remove(K,V)
+** getAndRemove
+** replace(K,V)
+** replace(K,V,V)
+** getAndReplace
+** removeAll(Set)
+** removeAll
+
+== Continuous integration and deployment on Maven Central
+This project is built continuously by https://travis-ci.org/[Travis CI] using the scripts provided by https://github.com/mizool/travis-ci-maven-gitflow[Mizool's Travis CI Maven gitflow script repository].
+
+`-SNAPSHOT` versions on the `develop` branch are made available via the https://oss.sonatype.org/content/repositories/snapshots/[OSSRH snapshot repository].
+Releases are transferred to the https://search.maven.org[Maven Central Repository].
+
+Refer to https://github.com/mizool/travis-ci-maven-gitflow/blob/master/README.adoc#performing-a-release[this guide] on how to perform a release.
