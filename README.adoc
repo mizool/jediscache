@@ -1,0 +1,17 @@
+== JedisCache
+An implementation of JCache which uses Jedis to implement the Cache commands.
+
+For release/deployment instructions, refer to https://github.com/mizool/mizool/[Mizool].
+
+== Limitations
+* Listener support is not implemented.
+* The following JCache operations were implemented using multiple subsequent commands to Redis, which creates race conditions:
+** getAndPut
+** putAll
+** remove(K,V)
+** getAndRemove
+** replace(K,V)
+** replace(K,V,V)
+** getAndReplace
+** removeAll(Set)
+** removeAll
