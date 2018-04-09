@@ -51,23 +51,34 @@ public class JedisCachingProvider implements CachingProvider
             properties = new Properties();
         }
 
-        Map<URI, CacheManager> cacheManagersByURI = cacheManagersByClassLoader.get(classLoader);
+        return getOrCreateCacheManager(uri, classLoader, properties);
+    }
 
-        if (cacheManagersByURI == null)
-        {
-            cacheManagersByURI = new HashMap<>();
-            cacheManagersByClassLoader.put(classLoader, cacheManagersByURI);
-        }
+    private CacheManager getOrCreateCacheManager(URI uri, ClassLoader classLoader, Properties properties)
+    {
+        Map<URI, CacheManager> cacheManagersByUri = getOrCreateCacheManagersByUri(classLoader);
 
-        CacheManager cacheManager = cacheManagersByURI.get(uri);
+        CacheManager cacheManager = cacheManagersByUri.get(uri);
 
         if (cacheManager == null)
         {
             cacheManager = new JedisCacheManager(this, uri, classLoader, properties, jedisPool);
-            cacheManagersByURI.put(uri, cacheManager);
+            cacheManagersByUri.put(uri, cacheManager);
         }
 
         return cacheManager;
+    }
+
+    private Map<URI, CacheManager> getOrCreateCacheManagersByUri(ClassLoader classLoader)
+    {
+        Map<URI, CacheManager> cacheManagersByUri = cacheManagersByClassLoader.get(classLoader);
+
+        if (cacheManagersByUri == null)
+        {
+            cacheManagersByUri = new HashMap<>();
+            cacheManagersByClassLoader.put(classLoader, cacheManagersByUri);
+        }
+        return cacheManagersByUri;
     }
 
     @Override
@@ -97,7 +108,7 @@ public class JedisCachingProvider implements CachingProvider
         }
         catch (URISyntaxException e)
         {
-            throw new CacheException("Failed to create the default URI for jedis cache", e);
+            throw new CacheException("Failed to create the default uri for jedis cache", e);
         }
     }
 
@@ -126,13 +137,16 @@ public class JedisCachingProvider implements CachingProvider
     @Override
     public synchronized void close(ClassLoader classLoader)
     {
-        ClassLoader managerClassLoader = classLoader == null ? getDefaultClassLoader() : classLoader;
-
-        Map<URI, CacheManager> cacheManagersByURI = cacheManagersByClassLoader.remove(managerClassLoader);
-
-        if (cacheManagersByURI != null)
+        if (classLoader == null)
         {
-            for (CacheManager cacheManager : cacheManagersByURI.values())
+            classLoader = getDefaultClassLoader();
+        }
+
+        Map<URI, CacheManager> cacheManagersByUri = cacheManagersByClassLoader.remove(classLoader);
+
+        if (cacheManagersByUri != null)
+        {
+            for (CacheManager cacheManager : cacheManagersByUri.values())
             {
                 cacheManager.close();
             }
@@ -142,39 +156,51 @@ public class JedisCachingProvider implements CachingProvider
     @Override
     public synchronized void close(URI uri, ClassLoader classLoader)
     {
-        URI managerURI = uri == null ? getDefaultURI() : uri;
-        ClassLoader managerClassLoader = classLoader == null ? getDefaultClassLoader() : classLoader;
-
-        Map<URI, CacheManager> cacheManagersByURI = cacheManagersByClassLoader.get(managerClassLoader);
-        if (cacheManagersByURI != null)
+        if (uri == null)
         {
-            CacheManager cacheManager = cacheManagersByURI.remove(managerURI);
+            uri = getDefaultURI();
+        }
+        if (classLoader == null)
+        {
+            classLoader = getDefaultClassLoader();
+        }
+
+        Map<URI, CacheManager> cacheManagersByUri = cacheManagersByClassLoader.get(classLoader);
+        if (cacheManagersByUri != null)
+        {
+            CacheManager cacheManager = cacheManagersByUri.remove(uri);
 
             if (cacheManager != null)
             {
                 cacheManager.close();
             }
 
-            if (cacheManagersByURI.size() == 0)
+            if (cacheManagersByUri.size() == 0)
             {
-                cacheManagersByClassLoader.remove(managerClassLoader);
+                cacheManagersByClassLoader.remove(classLoader);
             }
         }
     }
 
     synchronized void releaseCacheManager(URI uri, ClassLoader classLoader)
     {
-        URI managerURI = uri == null ? getDefaultURI() : uri;
-        ClassLoader managerClassLoader = classLoader == null ? getDefaultClassLoader() : classLoader;
-
-        Map<URI, CacheManager> cacheManagersByURI = cacheManagersByClassLoader.get(managerClassLoader);
-        if (cacheManagersByURI != null)
+        if (uri == null)
         {
-            cacheManagersByURI.remove(managerURI);
+            uri = getDefaultURI();
+        }
+        if (classLoader == null)
+        {
+            classLoader = getDefaultClassLoader();
+        }
 
-            if (cacheManagersByURI.size() == 0)
+        Map<URI, CacheManager> cacheManagersByUri = cacheManagersByClassLoader.get(classLoader);
+        if (cacheManagersByUri != null)
+        {
+            cacheManagersByUri.remove(uri);
+
+            if (cacheManagersByUri.size() == 0)
             {
-                cacheManagersByClassLoader.remove(managerClassLoader);
+                cacheManagersByClassLoader.remove(classLoader);
             }
         }
     }

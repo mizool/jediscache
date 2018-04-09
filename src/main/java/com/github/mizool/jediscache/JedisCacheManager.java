@@ -4,6 +4,7 @@ import java.net.URI;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -89,7 +90,7 @@ class JedisCacheManager implements CacheManager
         {
             Configuration<K, V> configuration = cache.getConfiguration(CompleteConfiguration.class);
 
-            if (configuration.getKeyType() == null || !configuration.getKeyType().equals(keyType))
+            if (!Objects.equals(configuration.getKeyType(), keyType))
             {
                 throw new ClassCastException("Incompatible cache key types specified, expected " +
                     configuration.getKeyType() +
@@ -98,7 +99,7 @@ class JedisCacheManager implements CacheManager
                     " was specified");
             }
 
-            if (configuration.getValueType() == null || !configuration.getValueType().equals(valueType))
+            if (!Objects.equals(configuration.getValueType(), valueType))
             {
                 throw new ClassCastException("Incompatible cache value types specified, expected " +
                     configuration.getValueType() +
