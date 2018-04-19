@@ -33,6 +33,11 @@ import redis.clients.jedis.ScanResult;
 @ToString(of = { "name" })
 class JedisCache<K, V> implements Cache<K, V>
 {
+    private static final String POOL_SIZE_WARN_THRESHOLD_PROPERTY_NAME = "jediscache.poolsize.warn.threshold";
+    private static final int POOL_SIZE_WARN_THRESHOLD = Integer.parseInt(System.getProperty(
+        POOL_SIZE_WARN_THRESHOLD_PROPERTY_NAME,
+        "100"));
+
     private final JedisCacheManager cacheManager;
     private final MutableConfiguration<K, V> configuration;
     private final JedisPool jedisPool;
@@ -339,7 +344,7 @@ class JedisCache<K, V> implements Cache<K, V>
                     return classOfT.cast(this);
                 }
 
-                throw new IllegalArgumentException("Unwapping to " +
+                throw new IllegalArgumentException("Unwrapping to " +
                     classOfT +
                     " is not a supported by this implementation");
             }
@@ -349,6 +354,20 @@ class JedisCache<K, V> implements Cache<K, V>
     private Jedis obtainJedis()
     {
         verifyOpen();
+        int numActive = jedisPool.getNumActive();
+        int numIdle = jedisPool.getNumIdle();
+        if (numActive + numIdle >= POOL_SIZE_WARN_THRESHOLD)
+        {
+            log.warn(
+                "Pool size exceeds warning threshold, numActive is {}, numIdle is {} ({} in total)",
+                numActive,
+                numIdle,
+                numActive + numIdle);
+        }
+        else
+        {
+            log.debug("numActive is {}, numIdle is {} ({} in total)", numActive, numIdle, numActive + numIdle);
+        }
         return jedisPool.getResource();
     }
 
