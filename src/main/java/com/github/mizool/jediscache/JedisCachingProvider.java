@@ -23,15 +23,22 @@ import redis.clients.jedis.JedisPoolConfig;
 @MetaInfServices(CachingProvider.class)
 public class JedisCachingProvider implements CachingProvider
 {
-    private static final String JEDISCACHE_HOST = "jediscache.host";
+    private static final String HOST_PROPERTY_NAME = "jediscache.host";
+    private static final String HOST = System.getProperty(HOST_PROPERTY_NAME, "localhost");
+    private static final String PORT_PROPERTY_NAME = "jediscache.port";
+    private static final int PORT = Integer.parseInt(System.getProperty(PORT_PROPERTY_NAME, "6379"));
+    private static final String POOL_SIZE_PROPERTY_NAME = "jediscache.poolsize";
+    private static final int POOL_SIZE = Integer.parseInt(System.getProperty(POOL_SIZE_PROPERTY_NAME, "-1"));
+
     private final JedisPool jedisPool;
     private Map<ClassLoader, Map<URI, CacheManager>> cacheManagersByClassLoader;
 
     public JedisCachingProvider()
     {
-        String host = System.getProperty(JEDISCACHE_HOST, "127.0.0.1");
-        log.info("JedisCache active, connecting to {}", host);
-        jedisPool = new JedisPool(new JedisPoolConfig(), host);
+        log.info("JedisCache active, connecting to {}:{}", HOST, PORT);
+        JedisPoolConfig poolConfig = new JedisPoolConfig();
+        poolConfig.setMaxTotal(POOL_SIZE);
+        jedisPool = new JedisPool(poolConfig, HOST, PORT);
         cacheManagersByClassLoader = new WeakHashMap<>();
     }
 
