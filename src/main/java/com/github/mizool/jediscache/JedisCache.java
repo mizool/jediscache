@@ -1,6 +1,7 @@
 package com.github.mizool.jediscache;
 
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -98,19 +99,25 @@ class JedisCache<K, V> implements Cache<K, V>
     @Override
     public Map<K, V> getAll(Set<? extends K> keys)
     {
-        Map<byte[], byte[]> allEntries;
+        List<byte[]> allEntries;
         try (Jedis jedis = obtainJedis())
         {
-            allEntries = jedis.hgetAll(jedisCacheName);
+            allEntries = jedis.hmget(jedisCacheName, keys.stream().map(converter::serialize).toArray(byte[][]::new));
         }
         ImmutableMap.Builder<K, V> builder = ImmutableMap.builder();
-        keys.forEach(key -> {
-            byte[] serializedKey = converter.serialize(key);
-            if (allEntries.containsKey(serializedKey))
+        K key = null;
+        for (byte[] entry : allEntries)
+        {
+            if (key == null)
             {
-                builder.put(key, converter.deserialize(allEntries.get(serializedKey), valueClass));
+                key = converter.deserialize(entry, keyClass);
             }
-        });
+            else
+            {
+                builder.put(key, converter.deserialize(entry, valueClass));
+                key = null;
+            }
+        }
         return builder.build();
     }
 
@@ -223,21 +230,19 @@ class JedisCache<K, V> implements Cache<K, V>
     @Override
     public void removeAll(Set<? extends K> keys)
     {
-        keys.forEach(this::remove);
+        try (Jedis jedis = obtainJedis())
+        {
+            jedis.hdel(jedisCacheName, keys.stream().map(converter::serialize).toArray(byte[][]::new));
+        }
     }
 
     @Override
     public void removeAll()
     {
-        Set<K> keys;
         try (Jedis jedis = obtainJedis())
         {
-            keys = jedis.hkeys(jedisCacheName)
-                .stream()
-                .map(bytes -> converter.deserialize(bytes, keyClass))
-                .collect(Collectors.toSet());
+            jedis.del(jedisCacheName);
         }
-        removeAll(keys);
     }
 
     @Override
