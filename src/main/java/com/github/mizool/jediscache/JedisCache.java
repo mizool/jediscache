@@ -1,10 +1,13 @@
 package com.github.mizool.jediscache;
 
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
+import java.util.function.Function;
+import java.util.stream.Collector;
+import java.util.stream.Stream;
 
 import javax.cache.Cache;
 import javax.cache.configuration.CacheEntryListenerConfiguration;
@@ -23,6 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import com.google.common.base.Charsets;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Maps;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.ScanParams;
@@ -98,20 +102,16 @@ class JedisCache<K, V> implements Cache<K, V>
     @Override
     public Map<K, V> getAll(Set<? extends K> keys)
     {
-        Map<byte[], byte[]> allEntries;
+        List<byte[]> allEntries;
         try (Jedis jedis = obtainJedis())
         {
-            allEntries = jedis.hgetAll(jedisCacheName);
+            allEntries = jedis.hmget(jedisCacheName, keys.stream().map(converter::serialize).toArray(byte[][]::new));
         }
-        ImmutableMap.Builder<K, V> builder = ImmutableMap.builder();
-        keys.forEach(key -> {
-            byte[] serializedKey = converter.serialize(key);
-            if (allEntries.containsKey(serializedKey))
-            {
-                builder.put(key, converter.deserialize(allEntries.get(serializedKey), valueClass));
-            }
-        });
-        return builder.build();
+
+        return allEntries.stream()
+            .flatMap(splitToEntries())
+            .map(mapToDeserializedEntry())
+            .collect(toImmutableMap());
     }
 
     @Override
@@ -223,21 +223,19 @@ class JedisCache<K, V> implements Cache<K, V>
     @Override
     public void removeAll(Set<? extends K> keys)
     {
-        keys.forEach(this::remove);
+        try (Jedis jedis = obtainJedis())
+        {
+            jedis.hdel(jedisCacheName, keys.stream().map(converter::serialize).toArray(byte[][]::new));
+        }
     }
 
     @Override
     public void removeAll()
     {
-        Set<K> keys;
         try (Jedis jedis = obtainJedis())
         {
-            keys = jedis.hkeys(jedisCacheName)
-                .stream()
-                .map(bytes -> converter.deserialize(bytes, keyClass))
-                .collect(Collectors.toSet());
+            jedis.del(jedisCacheName);
         }
-        removeAll(keys);
     }
 
     @Override
@@ -377,5 +375,39 @@ class JedisCache<K, V> implements Cache<K, V>
         {
             throw new IllegalStateException("cache is closed");
         }
+    }
+
+    private Function<byte[], Stream<Map.Entry<byte[], byte[]>>> splitToEntries()
+    {
+        return new Function<byte[], Stream<Map.Entry<byte[], byte[]>>>()
+        {
+            private byte[] key;
+
+            @Override
+            public Stream<Map.Entry<byte[], byte[]>> apply(@NonNull byte[] element)
+            {
+                if (key == null)
+                {
+                    key = element;
+                    return Stream.of();
+                }
+                else
+                {
+                    key = null;
+                    return Stream.of(Maps.immutableEntry(key, element));
+                }
+            }
+        };
+    }
+
+    private Function<Map.Entry<byte[], byte[]>, Map.Entry<K, V>> mapToDeserializedEntry()
+    {
+        return entry -> Maps.immutableEntry(converter.deserialize(entry.getKey(), keyClass),
+            converter.deserialize(entry.getValue(), valueClass));
+    }
+
+    private Collector<Map.Entry<K, V>, ?, ImmutableMap<K, V>> toImmutableMap()
+    {
+        return ImmutableMap.toImmutableMap(Map.Entry::getKey, Map.Entry::getValue);
     }
 }
