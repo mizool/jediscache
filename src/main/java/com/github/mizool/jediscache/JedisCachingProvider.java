@@ -16,8 +16,10 @@ import lombok.extern.slf4j.Slf4j;
 
 import org.kohsuke.MetaInfServices;
 
+import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
+import redis.clients.jedis.exceptions.JedisException;
 
 @Slf4j
 @MetaInfServices(CachingProvider.class)
@@ -39,6 +41,7 @@ public class JedisCachingProvider implements CachingProvider
         JedisPoolConfig poolConfig = new JedisPoolConfig();
         poolConfig.setMaxTotal(POOL_SIZE);
         jedisPool = new JedisPool(poolConfig, HOST, PORT);
+        runConnectivityCheck();
         cacheManagersByClassLoader = new WeakHashMap<>();
     }
 
@@ -221,6 +224,19 @@ public class JedisCachingProvider implements CachingProvider
                 return true;
             default:
                 return false;
+        }
+    }
+
+    private void runConnectivityCheck()
+    {
+        try (Jedis jedis = jedisPool.getResource())
+        {
+            jedis.ping();
+        }
+        catch (JedisException e)
+        {
+            log.error("JedisCache could not reach {}:{}", HOST, PORT);
+            throw e;
         }
     }
 }
