@@ -5,7 +5,7 @@
 
     <groupId>com.github.mizool.jediscache</groupId>
     <artifactId>jediscache</artifactId>
-    <version>0.5-SNAPSHOT</version>
+    <version>0.5</version>
     <name>${project.groupId}:${project.artifactId}</name>
     <description>An implementation of JCache which uses Jedis to implement the cache commands.</description>
     <url>https://github.com/mizool/jediscache</url>
