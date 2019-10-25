@@ -8,3 +8,10 @@ script: "wget -q -O - https://raw.githubusercontent.com/mizool/travis-ci-maven-g
 cache:
   directories:
   - "$HOME/.m2/repository"
+  - "$HOME/.sonar/cache"
+
+git:
+  depth: false
+
+addons:
+  sonarcloud:
