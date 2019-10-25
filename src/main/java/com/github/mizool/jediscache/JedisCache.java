@@ -64,13 +64,6 @@ class JedisCache<K, V> implements Cache<K, V>
 
         this.keyClass = configuration.getKeyType();
         this.valueClass = configuration.getValueType();
-        try
-        {
-            Thread.sleep(1000);
-        }
-        catch (InterruptedException ignored)
-        {
-        }
         //we make a copy of the configuration here so that the provided one
         //may be changed and/or used independently for other caches. we do this
         //as we don't know if the provided configuration is mutable
@@ -112,6 +105,13 @@ class JedisCache<K, V> implements Cache<K, V>
         try (Jedis jedis = obtainJedis())
         {
             allEntries = jedis.hmget(jedisCacheName, keys.stream().map(converter::serialize).toArray(byte[][]::new));
+        }
+        try
+        {
+            Thread.sleep(1000);
+        }
+        catch (InterruptedException ignored)
+        {
         }
 
         return allEntries.stream().flatMap(splitToEntries()).map(mapToDeserializedEntry()).collect(toImmutableMap());
