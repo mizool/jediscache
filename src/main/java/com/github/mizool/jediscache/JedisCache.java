@@ -66,7 +66,7 @@ class JedisCache<K, V> implements Cache<K, V>
         this.valueClass = configuration.getValueType();
         try
         {
-            Thread.sleep(100000);
+            Thread.sleep(1000);
         }
         catch (InterruptedException ignored)
         {
