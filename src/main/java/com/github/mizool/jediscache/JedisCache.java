@@ -64,7 +64,13 @@ class JedisCache<K, V> implements Cache<K, V>
 
         this.keyClass = configuration.getKeyType();
         this.valueClass = configuration.getValueType();
-
+        try
+        {
+            Thread.sleep(100000);
+        }
+        catch (InterruptedException ignored)
+        {
+        }
         //we make a copy of the configuration here so that the provided one
         //may be changed and/or used independently for other caches. we do this
         //as we don't know if the provided configuration is mutable
@@ -108,10 +114,7 @@ class JedisCache<K, V> implements Cache<K, V>
             allEntries = jedis.hmget(jedisCacheName, keys.stream().map(converter::serialize).toArray(byte[][]::new));
         }
 
-        return allEntries.stream()
-            .flatMap(splitToEntries())
-            .map(mapToDeserializedEntry())
-            .collect(toImmutableMap());
+        return allEntries.stream().flatMap(splitToEntries()).map(mapToDeserializedEntry()).collect(toImmutableMap());
     }
 
     @Override
@@ -356,8 +359,7 @@ class JedisCache<K, V> implements Cache<K, V>
         int numIdle = jedisPool.getNumIdle();
         if (numActive + numIdle >= POOL_SIZE_WARN_THRESHOLD)
         {
-            log.warn(
-                "Pool size exceeds warning threshold, numActive is {}, numIdle is {} ({} in total)",
+            log.warn("Pool size exceeds warning threshold, numActive is {}, numIdle is {} ({} in total)",
                 numActive,
                 numIdle,
                 numActive + numIdle);
